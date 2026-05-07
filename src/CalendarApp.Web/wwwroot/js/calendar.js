@@ -83,7 +83,7 @@ function formatTime(isoString) {
     if (!isoString) return '--:--';
     const timePart = isoString.includes('T') ? isoString.split('T')[1] : isoString;
     const parts = timePart.split(':');
-    return `${parts[0].padStart(2,'0')}:${parts[1].padStart(2,'0')}`;
+    return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
 }
 
 function showFieldError(elementId, message) {
@@ -428,7 +428,7 @@ async function checkReminders() {
             const r = reminders[0];
             document.getElementById('reminderApptName').textContent = r.name;
             openModal('reminderModal');
-            try { new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play(); } catch (e) {}
+            try { new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play(); } catch (e) { }
         }
     } catch (err) {
         console.error('Reminder check failed', err);

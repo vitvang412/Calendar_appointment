@@ -87,12 +87,11 @@ app.UseRouting();
 
 app.UseAuthorization();
 
-app.MapStaticAssets();
+app.UseStaticFiles();
 
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Calendar}/{action=Index}/{id?}")
-    .WithStaticAssets();
+    pattern: "{controller=Calendar}/{action=Index}/{id?}");
 
 
 app.Run();
