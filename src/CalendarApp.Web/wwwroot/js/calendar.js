@@ -258,7 +258,7 @@ async function resolveConflict(option) {
         return;
     }
 
-    // Option 2: Replace Existing → delete old, save new (no group check)
+    // Option 2: Replace Existing → delete old, then check group meeting, then save new
     if (option === 'replace') {
         try {
             const resp = await fetch('/api/AppointmentApi/resolve-conflict', {
@@ -270,17 +270,30 @@ async function resolveConflict(option) {
                     option: 1  // ConflictOption.ReplaceExisting
                 })
             });
-            if (resp.ok) {
+
+            const result = await resp.json();
+
+            if (result.action === 'join_group') {
+                // Backend found a matching group meeting → show join dialog
+                // pendingAppointment is still set, just update pendingGroupMeeting
+                pendingGroupMeeting = result.groupMeeting;
+                pendingConflictingId = null;
+                showJoinGroupDialog(result.groupMeeting);
+            } else if (resp.ok) {
                 showToast('Appointment replaced successfully!', 'success');
                 refreshCalendar();
+                pendingAppointment = null;
+                pendingConflictingId = null;
             } else {
                 showToast('Failed to replace appointment', 'error');
+                pendingAppointment = null;
+                pendingConflictingId = null;
             }
         } catch (err) {
             showToast('Network error', 'error');
+            pendingAppointment = null;
+            pendingConflictingId = null;
         }
-        pendingAppointment = null;
-        pendingConflictingId = null;
     }
 }
 

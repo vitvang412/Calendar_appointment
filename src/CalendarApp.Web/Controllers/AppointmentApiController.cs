@@ -87,18 +87,51 @@ public class AppointmentApiController : ControllerBase
     [HttpPost("resolve-conflict")]
     public async Task<IActionResult> ResolveConflict([FromBody] ConflictResolutionRequest request)
     {
-        var newAppointment = new CalendarApp.Domain.Entities.Appointment
-        {
-            Name = request.Command.Name,
-            Location = request.Command.Location,
-            StartTime = AsLocal(request.Command.StartTime),
-            EndTime = AsLocal(request.Command.EndTime),
-            UserId = request.Command.UserId
-        };
-
         if (request.Option == ConflictOption.ReplaceExisting)
         {
+            var startTime = AsLocal(request.Command.StartTime);
+            var endTime   = AsLocal(request.Command.EndTime);
+            var duration  = endTime - startTime;
+
+            // ✅ Check group meeting FIRST (same logic as AddAppointment)
+            var groupMeeting = await _conflictResolver.FindMatchingGroupMeetingAsync(request.Command.Name, duration);
+            if (groupMeeting != null)
+            {
+                // Delete the conflicting appointment ONLY after we know we'll handle it
+                await _appointmentRepo.DeleteAsync(request.ConflictingAppointmentId);
+
+                return Ok(new
+                {
+                    action = "join_group",
+                    groupMeeting = new
+                    {
+                        groupMeeting.Id,
+                        groupMeeting.Name,
+                        groupMeeting.Duration,
+                        ParticipantCount = groupMeeting.Participants.Count
+                    }
+                });
+            }
+
+            // No group meeting match → replace normally
+            var newAppointment = new CalendarApp.Domain.Entities.Appointment
+            {
+                Name      = request.Command.Name,
+                Location  = request.Command.Location,
+                StartTime = startTime,
+                EndTime   = endTime,
+                UserId    = request.Command.UserId
+            };
+
             await _conflictResolver.ReplaceAppointmentAsync(request.ConflictingAppointmentId, newAppointment);
+
+            if (request.Command.AddReminder)
+            {
+                var reminderService = HttpContext.RequestServices
+                    .GetRequiredService<CalendarApp.Domain.Interfaces.IReminderService>();
+                await reminderService.AddReminderAsync(newAppointment, newAppointment.StartTime.AddMinutes(-15));
+            }
+
             return Ok(new { message = "Appointment replaced successfully!" });
         }
 
