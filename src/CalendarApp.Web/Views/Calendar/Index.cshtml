@@ -1,0 +1,325 @@
+@model IEnumerable<CalendarApp.Domain.Entities.Appointment>
+@{
+    ViewData["Title"] = "Calendar";
+    var currentDate = (DateTime)ViewBag.CurrentDate;
+    var monthStart = (DateTime)ViewBag.MonthStart;
+    var firstDayOfWeek = (int)monthStart.DayOfWeek;
+    var daysInMonth = DateTime.DaysInMonth(currentDate.Year, currentDate.Month);
+    var today = DateTime.Today;
+    // All upcoming appointments (today and future), sorted
+    var upcomingAppointments = Model
+        .Where(a => a.StartTime.Date >= today)
+        .OrderBy(a => a.StartTime)
+        .ToList();
+}
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- FAB Button -->
+<button class="btn-add-fab" onclick="openAddModal()" title="Add Appointment">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+</button>
+
+<div class="container-fluid px-4 py-3">
+    <div class="main-layout">
+
+        <!-- ===== LEFT: CALENDAR ===== -->
+        <div class="calendar-wrapper">
+            <div class="calendar-container">
+                <!-- Calendar Header -->
+                <div class="calendar-header">
+                    <a href="@Url.Action("Index", new { date = monthStart.AddMonths(-1) })" class="btn-nav">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    </a>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <h2>@currentDate.ToString("MMMM") <span>@currentDate.Year</span></h2>
+                        <a href="@Url.Action("Index", new { date = today })" class="btn-today">Today</a>
+                    </div>
+                    <a href="@Url.Action("Index", new { date = monthStart.AddMonths(1) })" class="btn-nav">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    </a>
+                </div>
+
+                <!-- Calendar Grid -->
+                <div class="calendar-grid">
+                    @foreach (var dayName in new[] { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" })
+                    {
+                        <div class="calendar-weekday">@dayName</div>
+                    }
+
+                    @for (int week = 0; week < 6; week++)
+                    {
+                        if (week * 7 + 1 - firstDayOfWeek > daysInMonth) break;
+                        for (int d = 0; d < 7; d++)
+                        {
+                            var dayNum = week * 7 + d + 1 - firstDayOfWeek;
+                            if (dayNum < 1 || dayNum > daysInMonth)
+                            {
+                                <div class="calendar-day other-month">
+                                    <div class="day-number">@(dayNum < 1 ? (daysInMonth + dayNum) : (dayNum - daysInMonth))</div>
+                                </div>
+                            }
+                            else
+                            {
+                                var date = new DateTime(currentDate.Year, currentDate.Month, dayNum);
+                                var dayAppointments = Model.Where(a => a.StartTime.Date == date.Date).OrderBy(a => a.StartTime).ToList();
+                                var isToday = date == today;
+                                var isPast = date < today;
+
+                                if (isPast)
+                                {
+                                    <!-- Past day: grayed out, not clickable -->
+                                    <div class="calendar-day past-day">
+                                        <div class="day-number">@dayNum</div>
+                                        @foreach (var appt in dayAppointments)
+                                        {
+                                            <div class="appointment-badge @(appt.GroupMeetingId.HasValue ? "group" : "personal") past-badge"
+                                                 title="@appt.Name (@appt.StartTime.ToString("HH:mm") - @appt.EndTime.ToString("HH:mm"))">
+                                                @appt.Name
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="calendar-day @(isToday ? "today" : "")"
+                                         onclick="openAddForDate('@date.ToString("yyyy-MM-dd")')"
+                                         data-date="@date.ToString("yyyy-MM-dd")">
+                                        <div class="day-number">@dayNum</div>
+                                        @foreach (var appt in dayAppointments)
+                                        {
+                                            <div class="appointment-badge @(appt.GroupMeetingId.HasValue ? "group" : "personal")"
+                                                 onclick="event.stopPropagation(); showDetail(@appt.Id, '@appt.Name', '@appt.StartTime.ToString("HH:mm")', '@appt.EndTime.ToString("HH:mm")', '@appt.Location.Replace("'", "\\'")', @(appt.Reminder != null ? "true" : "false"), @(appt.GroupMeetingId.HasValue ? "true" : "false"), event)"
+                                                 title="@appt.Name (@appt.StartTime.ToString("HH:mm") - @appt.EndTime.ToString("HH:mm"))">
+                                                @if (appt.Reminder != null)
+                                                {
+                                                    <svg class="badge-bell" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                                }
+                                                @appt.Name
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            }
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== RIGHT: APPOINTMENT LIST SIDEBAR ===== -->
+        <div class="sidebar-panel">
+            <div class="sidebar-header">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                Upcoming
+                <span class="badge-count">@upcomingAppointments.Count</span>
+            </div>
+            <div class="sidebar-body">
+                @if (!upcomingAppointments.Any())
+                {
+                    <div class="empty-state">
+                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        <p>No upcoming appointments</p>
+                    </div>
+                }
+                @foreach (var appt in upcomingAppointments)
+                {
+                    var isApptToday = appt.StartTime.Date == today;
+                    <div class="appt-item @(appt.GroupMeetingId.HasValue ? "is-group" : "")"
+                         onclick="showDetail(@appt.Id, '@appt.Name', '@appt.StartTime.ToString("HH:mm")', '@appt.EndTime.ToString("HH:mm")', '@appt.Location.Replace("'", "\\'")', @(appt.Reminder != null ? "true" : "false"), @(appt.GroupMeetingId.HasValue ? "true" : "false"), null)">
+                        <div class="appt-color-bar"></div>
+                        <div class="appt-item-body">
+                            <div class="appt-item-name">@appt.Name</div>
+                            <div class="appt-item-meta">
+                                <span class="appt-item-date">
+                                    @if (isApptToday)
+                                    {
+                                        <span class="today-tag">Today</span>
+                                    }
+                                    else
+                                    {
+                                        @appt.StartTime.ToString("ddd, MMM d")
+                                    }
+                                </span>
+                                <span>@appt.StartTime.ToString("HH:mm") – @appt.EndTime.ToString("HH:mm")</span>
+                            </div>
+                            @if (!string.IsNullOrEmpty(appt.Location))
+                            {
+                                <div class="appt-item-loc">
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                                    @appt.Location
+                                </div>
+                            }
+                        </div>
+                        @if (appt.Reminder != null)
+                        {
+                            <svg class="appt-bell-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+    </div><!-- end main-layout -->
+</div>
+
+<!-- ===== ADD APPOINTMENT MODAL ===== -->
+<div class="modal-overlay" id="addModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                New Appointment
+            </h3>
+            <button class="modal-close" onclick="closeModal('addModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="appointmentForm" onsubmit="submitAppointment(event)">
+                <div class="form-group">
+                    <label>Name <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="apptName" placeholder="Meeting title..." autocomplete="off" />
+                    <div class="error-text" id="nameError"><span class="error-icon"></span> <span></span></div>
+                </div>
+                <div class="form-group">
+                    <label>Location</label>
+                    <input type="text" class="form-input" id="apptLocation" placeholder="Room, address, or link..." />
+                </div>
+                <div class="form-group">
+                    <label>Date <span class="required">*</span></label>
+                    <input type="date" class="form-input" id="apptDate" />
+                </div>
+
+                <!-- Time Row: Start + End side by side -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Start Time <span class="required">*</span></label>
+                        <input type="time" class="form-input" id="apptStartTime" value="09:00" required />
+                    </div>
+                    <div class="form-group" style="position:relative;">
+                        <label>End Time <span class="required">*</span></label>
+                        <input type="time" class="form-input" id="apptEndTime" value="10:00" required />
+                        <div class="error-text" id="timeError"><span class="error-icon"></span> <span></span></div>
+                    </div>
+                </div>
+
+                <div class="form-check">
+                    <input type="checkbox" id="apptReminder" />
+                    <label for="apptReminder">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                        Remind me 15 minutes before
+                    </label>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeModal('addModal')">Cancel</button>
+            <button class="btn btn-primary" id="btnSave" onclick="submitAppointment(event)">
+                Save Appointment
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== CONFLICT MODAL ===== -->
+<div class="modal-overlay" id="conflictModal">
+    <div class="modal-box" style="border-top: 4px solid var(--warning);">
+        <div class="modal-header">
+            <h3>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--warning);"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                Schedule Conflict
+            </h3>
+            <button class="modal-close" onclick="closeModal('conflictModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="conflict-info">
+                <p id="conflictMessage" style="margin:0;"></p>
+            </div>
+            <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:1rem;">What would you like to do?</p>
+            <div class="conflict-actions">
+                <button class="btn btn-ghost btn-full" onclick="resolveConflict('choose_other_time')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    Choose Other Time
+                </button>
+                <button class="btn btn-danger btn-full" onclick="resolveConflict('replace')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    Replace Existing
+                </button>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="cancelConflict()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== JOIN GROUP MODAL ===== -->
+<div class="modal-overlay" id="groupModal">
+    <div class="modal-box" style="border-top: 4px solid var(--info);">
+        <div class="modal-header">
+            <h3>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--info);"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                Group Meeting Found
+            </h3>
+            <button class="modal-close" onclick="closeModal('groupModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="group-info">
+                <p id="groupMessage" style="margin:0;"></p>
+            </div>
+            <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:1rem;">Would you like to join this group meeting?</p>
+            <div class="group-actions">
+                <button class="btn btn-primary btn-full" onclick="confirmJoinGroup()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    Join Group Meeting
+                </button>
+                <button class="btn btn-ghost btn-full" onclick="skipGroup()">
+                    Create Personal Instead
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== DETAIL MODAL ===== -->
+<div class="modal-overlay" id="detailModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="detailTitle">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+                Appointment Details
+            </h3>
+            <button class="modal-close" onclick="closeModal('detailModal')">&times;</button>
+        </div>
+        <div class="modal-body" id="detailBody"></div>
+        <div class="modal-footer">
+            <button class="btn btn-danger btn-sm" onclick="deleteAppointment()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                Delete
+            </button>
+            <button class="btn btn-ghost" onclick="closeModal('detailModal')">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== REMINDER MODAL ===== -->
+<div class="modal-overlay" id="reminderModal">
+    <div class="modal-box reminder-modal-box">
+        <div class="reminder-bell-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </div>
+        <div class="modal-header" style="border-bottom:none; padding-bottom:0;">
+            <h3 style="font-size:1rem; color:var(--gray-600); font-weight:600;">Appointment Reminder</h3>
+            <button class="modal-close" onclick="closeModal('reminderModal')">&times;</button>
+        </div>
+        <div class="modal-body" style="text-align:center; padding-top:0.5rem;">
+            <div id="reminderApptName" style="font-size:1.3rem; font-weight:700; color:var(--gray-900); margin-bottom:0.4rem;"></div>
+            <div style="color:var(--gray-500); font-size:0.88rem; margin-bottom:1.5rem;">Starting in 15 minutes</div>
+            <button class="btn btn-primary btn-full" onclick="closeModal('reminderModal')">Got it</button>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/calendar.js"></script>
+}
